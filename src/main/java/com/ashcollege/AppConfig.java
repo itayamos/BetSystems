@@ -12,20 +12,20 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter
 import javax.sql.DataSource;
 import java.util.Properties;
 
+import static com.ashcollege.utils.Constants.DB_PASSWORD;
+import static com.ashcollege.utils.Constants.DB_USERNAME;
+
 
 @Configuration
 @Profile("production")
 public class AppConfig {
-
-    public static final String DB_USERNAME = "root";
-    public static final String DB_PASSWORD = "1234";
 
 
     @Bean
     public DataSource dataSource() throws Exception {
         ComboPooledDataSource dataSource = new ComboPooledDataSource();
         dataSource.setDriverClass("com.mysql.jdbc.Driver");
-        dataSource.setJdbcUrl("jdbc:mysql://localhost:3306/ash2024?useSSL=false&amp;useUnicode=true&amp;characterEncoding=utf8");
+        dataSource.setJdbcUrl("jdbc:mysql://localhost:3306/ash2024?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true");
         dataSource.setUser(DB_USERNAME);
         dataSource.setPassword(DB_PASSWORD);
         dataSource.setMaxPoolSize(20);
