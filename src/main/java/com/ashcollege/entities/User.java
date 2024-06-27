@@ -5,7 +5,7 @@ public class User {
     private String username;
     private String password;
     private String secret;
-    private College college;
+
     private String email;
     private int money;
 
@@ -74,13 +74,7 @@ public class User {
         this.secret = secret;
     }
 
-    public College getCollege() {
-        return college;
-    }
 
-    public void setCollege(College college) {
-        this.college = college;
-    }
 
     public String getEmail() {
         return email;

@@ -9,8 +9,6 @@ public class Club {
     private int id;
     private String name;
     private double skill;
-    //@OneToMany(mappedBy = "club", cascade = CascadeType.ALL) // OneToMany for players
-
     private int wins;
     private int loses;
     private int draws;

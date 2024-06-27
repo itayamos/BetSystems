@@ -16,6 +16,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.Collections;
+import java.util.Optional;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -39,11 +43,13 @@ public class GeneralController {
     @Autowired
     private Persist persist;
 
-    private ScheduledExecutorService executorService;
+    private ScheduledExecutorService service = Executors.newSingleThreadScheduledExecutor();
 
 
 
     private List<EventClient> clients=new ArrayList<>();
+    private List<SseEmitter> sseEmitters=new ArrayList<>();
+
     @PostConstruct
     public void initBet(){
         new Thread(()->{
@@ -61,61 +67,15 @@ public class GeneralController {
                         pendingBet(bet.getId());
                     }
                 }
+
             }
         }).start();
     }
     /*@PostConstruct
     public void init(){
-        new Thread(()->{
-            while(true){
-                try {
-                    Thread.sleep(333);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
 
-                for(EventClient client:clients){
-                    try {
-                        if (client.getSecret().equals("1")){
-                            JSONObject object=new JSONObject();
-                            object.put("teamA", System.currentTimeMillis()+"__"+3);
-                            client.getSseEmitter().send(object.toString());
-                        }else {
-                            JSONObject object=new JSONObject();
-                            object.put("teamA", System.currentTimeMillis()+"__"+4);
-                            List<Game> active_game=persist.getGamesByStatus("active");
-                            List<Game> upcoming_games=persist.getGamesByStatus("not started");
-                            if(upcoming_games!=null&&!upcoming_games.isEmpty()){
-                                List<Integer> gameIDs=upcoming_games.stream().map((Game g)->{return g.getId();}).collect(Collectors.toList());
-                                List<String> gameNames=upcoming_games.stream().map((Game g)->{return g.getHome().getName()+" - "+g.getAway().getName();}).collect(Collectors.toList());
-                                for (int i = 0; i < upcoming_games.size(); i++) {
-                                    object.put("game_name"+i,gameNames.get(i)).append("game_id"+i,gameIDs.get(i));
-                                }
-                            }
-
-                            if (active_game != null&&!active_game.isEmpty()) {
-                                Game game=active_game.get(0);
-                                if(game!=null){
-                                    object
-                                            .put("home",game.getHome().getName())
-                                            .put("home_score",game.getScore_home())
-                                            .put("away_score",game.getScore_away())
-                                            .put("away",game.getAway().getName())
-                                            .put("minute",game.getMinute());
-                                    client.getSseEmitter().send(object.toString());
-                                }
-                            }
-                        }
-
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-
-            }
-        }).start();
     }*/
-    @PostConstruct
+    /*@PostConstruct
     public void notStarted(){
         new Thread(()->{
             while(true){
@@ -156,7 +116,175 @@ public class GeneralController {
 
             }
         }).start();
+    }*/
+    /*@PostConstruct
+    public void active(){
+        new Thread(()->{
+            while(true){
+                try {
+                    Thread.sleep(333);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+
+                for(EventClient client:clients){
+                    try {
+                        if (client.getSecret().equals("1")){
+                            JSONObject object=new JSONObject();
+                            object.put("teamA", System.currentTimeMillis()+"__"+3);
+                            client.getSseEmitter().send(object.toString());
+                        }else {
+                            JSONObject object=new JSONObject();
+                            JSONArray home_goals = new JSONArray();
+                            JSONArray away_goals = new JSONArray();
+                            List<Game> active_game=persist.getGamesByStatus("active");
+                            if (active_game != null&&!active_game.isEmpty()) {
+                                Game game=active_game.get(0);
+                                if(game!=null){
+                                    object
+                                            .put("home",game.getHome().getName())
+                                            .put("home_score",game.getScore_home())
+                                            .put("away_score",game.getScore_away())
+                                            .put("away",game.getAway().getName())
+                                            .put("minute",game.getMinute());
+
+                                    List<Goal> homeGoals=persist.getGameGoalsBySide(game.getId(),"home");
+                                    List<Goal> awayGoals=persist.getGameGoalsBySide(game.getId(),"away");
+                                    if (homeGoals!=null&&!homeGoals.isEmpty()){
+                                        for (int i = 0; i < homeGoals.size(); i++) {
+                                            JSONObject homeJsonObject = new JSONObject();
+                                            homeJsonObject.put("minute",homeGoals.get(i).getMinute())
+                                                    .put("side",homeGoals.get(i).getAffiliation())
+                                                    .put("scorer",homeGoals.get(i).getePlayer().getName());
+                                            home_goals.put(homeJsonObject);
+                                        }object.put("home_goals",home_goals);
+                                    }
+
+                                    if (awayGoals!=null&&!awayGoals.isEmpty()){
+                                        for (int i = 0; i < awayGoals.size(); i++) {
+                                            JSONObject awayJsonObject = new JSONObject();
+                                            awayJsonObject.put("minute",awayGoals.get(i).getMinute())
+                                                    .put("side",awayGoals.get(i).getAffiliation())
+                                                    .put("scorer",awayGoals.get(i).getePlayer().getName());
+                                            away_goals.put(awayJsonObject);
+                                        }object.put("away_goals",away_goals);
+                                    }
+
+
+                                    client.getSseEmitter().send(object.toString());
+                                }
+                            }
+                        }
+
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+
+            }
+        }).start();
+    }*/
+    //4444444444444444444444444444444444444444444444444444444444444
+
+    @RequestMapping(value = "start-streaming", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter createStreamingSession(String secret) {
+        try {
+            SseEmitter sseEmitter = new SseEmitter(Long.MAX_VALUE);
+            EventClient eventClient = new EventClient(sseEmitter, secret);
+            eventClient.setConnected(true);
+            clients.add(eventClient);
+            return sseEmitter;
+        } catch (Exception e) {
+            // Handle exception gracefully (e.g., log the error)
+            System.err.println("Error creating streaming session:"+ e);
+            return null; // Indicate an error occurred (optional)
+        }
     }
+
+    @PostConstruct
+    public void activate() {
+        new Thread(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(333);
+                } catch (InterruptedException e) {
+                    // Handle interruption gracefully (optional)
+                    break; // Consider stopping the thread or logging the interruption
+                }
+
+                for (EventClient client : clients.stream().filter(EventClient::isConnected).toList()) {
+                    try {
+                        if (client.getSecret().equals("1")) {
+                            JSONObject object = new JSONObject();
+                            object.put("teamA", System.currentTimeMillis() + "__" + 3);
+                            client.getSseEmitter().send(object.toString());
+                        } else {
+                            JSONObject object = new JSONObject();
+                            JSONArray home_goals = new JSONArray();
+                            JSONArray away_goals = new JSONArray();
+                            try {
+                                object.put("money",persist.getMoneyBySecret("qwert"));
+                            }catch (NullPointerException e){
+                                e.printStackTrace();
+                            }
+
+
+                            // Retrieve active games with null check
+                            List<Game> activeGames = persist.getGamesByStatus("active");
+                            Game game = activeGames != null && !activeGames.isEmpty() ? activeGames.get(0) : null;
+
+                            if (game != null) {
+                                object
+                                        .put("home", game.getHome().getName())
+                                        .put("home_score", game.getScore_home())
+                                        .put("away_score", game.getScore_away())
+                                        .put("away", game.getAway().getName())
+                                        .put("minute", game.getMinute());
+
+                                // Retrieve and handle potential null lists for goals (using Optional)
+                                Optional<List<Goal>> optionalHomeGoals = Optional.ofNullable(persist.getGameGoalsBySide(game.getId(), "home"));
+                                List<Goal> homeGoals = optionalHomeGoals.orElse(Collections.emptyList());
+
+                                Optional<List<Goal>> optionalAwayGoals = Optional.ofNullable(persist.getGameGoalsBySide(game.getId(), "away"));
+                                List<Goal> awayGoals = optionalAwayGoals.orElse(Collections.emptyList());
+
+                                // Process home and away goals with null checks
+                                for (Goal goal : homeGoals) {
+                                    JSONObject homeJsonObject = new JSONObject();
+                                    homeJsonObject.put("minute", goal.getMinute())
+                                            .put("side", goal.getAffiliation())
+                                            .put("scorer", goal.getePlayer().getName());
+                                    home_goals.put(homeJsonObject);
+                                }
+                                object.put("home_goals", home_goals);
+
+                                for (Goal goal : awayGoals) {
+                                    JSONObject awayJsonObject = new JSONObject();
+                                    awayJsonObject.put("minute", goal.getMinute())
+                                            .put("side", goal.getAffiliation())
+                                            .put("scorer", goal.getePlayer().getName());
+                                    away_goals.put(awayJsonObject);
+                                }
+                                object.put("away_goals", away_goals);
+
+                                client.getSseEmitter().send(object.toString());
+                            }
+                        }
+                    } catch (IOException e) {
+                        // Handle IOException gracefully (log the error)
+                        System.err.println("Error sending data:"+ e);
+                        // Consider removing the client if there's a persistent issue
+                    }
+                }
+            }
+        }).start();
+        Thread.onSpinWait();
+    }
+
+
+    //4444444444444444444444444444444444444444444444444444444444444
+
+
     @RequestMapping(value = "/", method = {RequestMethod.GET, RequestMethod.POST})
     public Object test () {
         return "Hello From Server";
@@ -179,13 +307,72 @@ public class GeneralController {
                 errorCode = ERROR_SIGN_UP_NO_PASSWORD;
             }
         } else {
-            errorCode = ERROR_SIGN_UP_NO_USERNAME;
+            errorCode = ERROR_NO_SIGN_UP_EMAIL;
         }
         if (errorCode != null) {
             basicResponse = new BasicResponse(success, errorCode);
         }
         return basicResponse;
     }
+
+    @RequestMapping (value = "/change-email", method = {RequestMethod.GET, RequestMethod.POST})
+    public BasicResponse changeEmail (String secret, String email) {
+        BasicResponse basicResponse = null;
+        boolean success = false;
+        Integer errorCode = null;
+        String emailRegex = "^[a-zA-Z0-9_+&*-]+(?:\\.[a-zA-Z0-9_+&*-]+)*@(?:[a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,7}$";
+        Pattern pattern_email = Pattern.compile(emailRegex);
+        Matcher matcher_email = pattern_email.matcher(email);
+        if (email != null && email.length() > 0 &&matcher_email.matches()) {
+            User user = persist.getUserBySecret(secret);
+            if (user != null) {
+                if(persist.getUserByEmail(email).isEmpty()){
+                    user.setEmail(email);
+                    persist.save(user);
+                    basicResponse = new UserDetailsResponse(true, errorCode, user);
+                }else {
+                    errorCode=EMAIL_ALREADY_EXISTS;
+                }
+            } else {
+                errorCode = ERROR_LOGIN_WRONG_CREDS;
+            }
+        } else {
+            errorCode = ERROR_NO_SIGN_UP_EMAIL;
+        }
+        if (errorCode != null) {
+            basicResponse = new BasicResponse(success, errorCode);
+        }
+        return basicResponse;
+    }
+
+    @RequestMapping (value = "/change-username", method = {RequestMethod.GET, RequestMethod.POST})
+    public BasicResponse changeUsername (String secret, String username) {
+        BasicResponse basicResponse = null;
+        boolean success = false;
+        Integer errorCode = null;
+        if (username != null && username.length() > 0) {
+            User user = persist.getUserBySecret(secret);
+            if (user != null) {
+                if(persist.getUserByUserName(username).isEmpty()){
+                    user.setUsername(username);
+                    persist.save(user);
+                    basicResponse = new UserDetailsResponse(true, errorCode, user);
+                }else {
+                    errorCode=EMAIL_ALREADY_EXISTS;
+                }
+            } else {
+                errorCode = ERROR_LOGIN_WRONG_CREDS;
+            }
+        } else {
+            errorCode = ERROR_NO_SUCH_USERNAME;
+        }
+        if (errorCode != null) {
+            basicResponse = new BasicResponse(success, errorCode);
+        }
+        return basicResponse;
+    }
+
+
 
     @RequestMapping (value = "add-user")
     public boolean addUser (String username, String password) {
@@ -204,7 +391,7 @@ public class GeneralController {
         String passwordRegex = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=!])(?=\\S+$).{8,}$";
         Pattern pattern_password = Pattern.compile(passwordRegex);
         Matcher matcher_password = pattern_password.matcher(password);
-        if (username!=null){
+        if (username!=null && username.length()>0){
           if (email!=null){
               if (matcher_email.matches()){
                   if (password!=null){
@@ -223,8 +410,7 @@ public class GeneralController {
                       }else {
                           error=PASSWORD_NOT_MATCHES_PATTERN;
                       }
-                  }
-                  else {
+                  } else {
                       error=ERROR_SIGN_UP_NO_PASSWORD;
                   }
               }else {
@@ -252,46 +438,8 @@ public class GeneralController {
     }
 
 
-    @RequestMapping (value = "add-product")
-    public boolean addProduct (String description, float price, int count) {
-        Product toAdd = new Product(description, price, count);
-        dbUtils.addProduct(toAdd);
-        return true;
-    }
 
-    @RequestMapping (value = "get-products")
-    public BasicResponse getProducts(String secret){
-        boolean success=false;
-        Integer errorCode=null;
-        BasicResponse basicResponse=null;
-        if(secret!=null){
-            User user=dbUtils.getUserBySecret(secret);
-            if(user!=null){
-                //success=true;
-                List<Product> products= dbUtils.getProductsByUserSecret(secret);
-                basicResponse=new ProductsResponse(true,null,products);
-            }else {
-                errorCode=ERROR_NO_SUCH_USER;
-            }
-        }else {
-            errorCode=ERROR_SECRET_WAS_NOT_SENT;
-        }
-        if (errorCode!=null){
-            basicResponse=new BasicResponse(false,errorCode);
-        }
-
-        return basicResponse;
-    }
-    @RequestMapping (value = "test")
-    public Client test(String firstName,String newFirstName){
-        Client client=persist.getClientByFirstName(firstName);
-        client.setFirstName(newFirstName);
-        client.setLastName(newFirstName);
-        persist.save(client);
-        return client;
-    }
-
-    @RequestMapping (value = "get-notes")
+    /*@RequestMapping (value = "get-notes")
     public BasicResponse getNotes(String name){
         boolean success=false;
         Integer errorCode=null;
@@ -308,15 +456,12 @@ public class GeneralController {
         }
 
         return basicResponse;
-    }
+    }*/
     @RequestMapping (value = "get-clubs")
     public List<Club> getClubs(){
         return persist.getClubs();
     }
-    @RequestMapping (value = "get-players")
-    public List<Player> getPlayers(){
-        return persist.getPlayers();
-    }
+
     @RequestMapping (value = "get-games")
     public List<Game> getGames(){
         return persist.getGames();
@@ -330,14 +475,119 @@ public class GeneralController {
         }
         return persist.getGamesByRound(round);
     }
+
+    @RequestMapping (value ="constant-update")
+    public BasicResponse constantUpdate(String secret){
+        BasicResponse basicResponse = null;
+        boolean success = false;
+        Integer errorCode = null;
+        User user = persist.getUserBySecret(secret);
+        if (user != null) {
+            basicResponse = new UserDetailsResponse(true, errorCode, user);
+        } else {
+            errorCode = ERROR_SECRET_WAS_NOT_SENT;
+        }
+        if (errorCode != null) {
+            basicResponse = new BasicResponse(success, errorCode);
+        }
+        return basicResponse;
+    }
     @RequestMapping (value = "get-team-rank")
-    public List<Club> getTeamRank(){
-        return persist.sortByRank();
+    public String getTeamRank(){
+        JSONObject object = new JSONObject();
+        JSONArray clubs = new JSONArray();
+        List<Club> clubList=persist.sortByRank();
+        for (int i = 0; i < clubList.size(); i++) {
+            Club club=clubList.get(i);
+            JSONObject clubJsonObject = new JSONObject();
+            clubJsonObject.put("name", club.getName())
+                    .put("points", club.getPoints())
+                    .put("goal_diff",club.getGoal_diff())
+                    .put("wins",club.getWins())
+                    .put("draws",club.getDraws())
+                    .put("loses",club.getLoses()).put("rank",i+1);
+            clubs.put(clubJsonObject);
+        }
+        object.put("clubs", clubs);
+        return object.toString();
+    }
+    @RequestMapping(value = "stream-games")
+    public String streamGame(){
+
+        JSONObject object = new JSONObject();
+        JSONArray home_goals = new JSONArray();
+        JSONArray away_goals = new JSONArray();
+
+
+
+            // Retrieve active games with null check
+            List<Game> activeGames = persist.getGamesByStatus("active");
+            Game game = activeGames != null && !activeGames.isEmpty() ? activeGames.get(0) : null;
+
+            if (game != null) {
+                object
+                        .put("home", game.getHome().getName())
+                        .put("home_score", game.getScore_home())
+                        .put("away_score", game.getScore_away())
+                        .put("away", game.getAway().getName())
+                        .put("minute", game.getMinute());
+
+                // Retrieve and handle potential null lists for goals (using Optional)
+                Optional<List<Goal>> optionalHomeGoals = Optional.ofNullable(persist.getGameGoalsBySide(game.getId(), "home"));
+                List<Goal> homeGoals = optionalHomeGoals.orElse(Collections.emptyList());
+
+                Optional<List<Goal>> optionalAwayGoals = Optional.ofNullable(persist.getGameGoalsBySide(game.getId(), "away"));
+                List<Goal> awayGoals = optionalAwayGoals.orElse(Collections.emptyList());
+
+                // Process home and away goals with null checks
+                for (Goal goal : homeGoals) {
+                    JSONObject homeJsonObject = new JSONObject();
+                    homeJsonObject.put("minute", goal.getMinute())
+                            .put("side", goal.getAffiliation())
+                            .put("scorer", goal.getePlayer().getName());
+                    home_goals.put(homeJsonObject);
+                }
+                object.put("home_goals", home_goals);
+
+                for (Goal goal : awayGoals) {
+                    JSONObject awayJsonObject = new JSONObject();
+                    awayJsonObject.put("minute", goal.getMinute())
+                            .put("side", goal.getAffiliation())
+                            .put("scorer", goal.getePlayer().getName());
+                    away_goals.put(awayJsonObject);
+                }
+                object.put("away_goals", away_goals);
+            }
+       return object.toString();
+    }
+    @RequestMapping(value = "stream-upcoming-games")
+    public String streamUpcomingGames(){
+
+        JSONObject object=new JSONObject();
+        JSONArray jsonArray = new JSONArray();
+        List<Game> upcoming_games=persist.getGamesByStatus("not started");
+        if(upcoming_games!=null&&!upcoming_games.isEmpty()){
+            List<Integer> gameIDs=upcoming_games.stream().map((Game g)->{return g.getId();}).collect(Collectors.toList());
+            List<String> gameNames=upcoming_games.stream().map((Game g)->{return g.getHome().getName()+" - "+g.getAway().getName();}).collect(Collectors.toList());
+            for (int i = 0; i < upcoming_games.size(); i++) {
+                JSONObject teamJsonObject = new JSONObject();
+                Prediction prediction=persist.getPredictionByGameId(gameIDs.get(i));
+                teamJsonObject.put("game_name",gameNames.get(i))
+                        .put("game_id",gameIDs.get(i))
+                        .put("home_prob",prediction.getHomeWin())
+                        .put("draw_prob",prediction.getDraw())
+                        .put("away_prob",prediction.getAwayWin());
+                jsonArray.put(teamJsonObject);
+            }
+            object.put("games",jsonArray);
+
+        }
+        return object.toString();
     }
 
 
 
-    @RequestMapping (value = "start-streaming",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    /*@RequestMapping (value = "start-streaming",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter createStreamingSession(String secret){
         try{
 
@@ -348,6 +598,97 @@ public class GeneralController {
         }catch (Exception e){
             throw new RuntimeException(e);
         }
+    }*/
+    @RequestMapping (value = "start-streaming1",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter createStreamingSession1(){
+        try{
+
+            SseEmitter sseEmitter=new SseEmitter((long) 3600*1000);
+            sseEmitters.add(sseEmitter);
+            sseEmitter.onCompletion(() -> {
+                System.out.println("Emitter completed");
+                sseEmitters.remove(sseEmitter);
+                service.shutdown();
+            });
+
+            sseEmitter.onTimeout(() -> {
+                System.out.println("Emitter timed out");
+                sseEmitters.remove(sseEmitter);
+                sseEmitter.complete();
+                service.shutdown();
+            });
+
+            sseEmitter.onError((throwable) -> {
+                System.out.println("Emitter error: " + throwable.getMessage());
+                sseEmitters.remove(sseEmitter);
+                service.shutdown();
+
+            });
+
+            return sseEmitter;
+        }catch (Exception e){
+            throw new RuntimeException(e);
+        }
+    }
+
+    //@#@#@#@#@##@#@#@#@#@#@#@#@#@#@#@#@#@#@##@@#@#@#@
+    @RequestMapping(value="user-bet-games")
+    public String getUsersGames(String secret){
+        //BasicResponse basicResponse = null;
+        //boolean success = false;
+        //Integer errorCode = null;
+        JSONObject object=new JSONObject();
+        JSONArray jsonArray = new JSONArray();
+        List<Bet> bets=persist.getBetByUserSecret(secret);
+        List<Game> games=bets.stream().map(Bet::getGame).toList();
+        /*if (persist.getUserBySecret(secret)!=null){
+
+            basicResponse=new JsonResponse(true,null,object.toString());
+        }else {
+            errorCode=ERROR_SECRET_WAS_NOT_SENT;
+        }if (errorCode!=null){
+            basicResponse=new BasicResponse(false,errorCode);
+        }
+        return basicResponse;*/
+        if(!bets.isEmpty()){
+            for (int i = 0; i < bets.size(); i++) {
+                JSONObject betJsonObject = new JSONObject();
+                betJsonObject.put("home_team_name",games.get(i).getHome().getName())
+                        .put("away_team_name",games.get(i).getAway().getName())
+                        .put("game_status",games.get(i).getStatus())
+                        .put("guess",bets.get(i).getGuess())
+                        .put("money_bet_on_game",bets.get(i).getMoney()).put("bonus",bets.get(i).getBonus());
+                if (games.get(i).getStatus().equals("not started")){
+                    //prediction
+                    Prediction prediction=persist.getPredictionByGameId(games.get(i).getId());
+                    betJsonObject.put("home_prob",prediction.getHomeWin())
+                            .put("draw_prob",prediction.getDraw())
+                            .put("away_prob",prediction.getAwayWin());
+                } else if (games.get(i).getStatus().equals("active")) {
+                    //stream
+                    betJsonObject.put("home_score",games.get(i).getScore_home())
+                            .put("away_score",games.get(i).getScore_away())
+                            .put("minute",games.get(i).getMinute());
+                } else if (games.get(i).getStatus().equals("finished")) {
+                    //result
+                    betJsonObject.put("home_score",games.get(i).getScore_home())
+                            .put("away_score",games.get(i).getScore_away())
+                            .put("response_bet",bets.get(i).isResponse());
+                    if(bets.get(i).isResponse()){
+                        if (bets.get(i).isResult()){
+                            betJsonObject.put("result","correct");
+                        } else{
+                            betJsonObject.put("result","wrong");
+                        }
+                    }
+                }
+
+
+                jsonArray.put(betJsonObject);
+            }
+        }
+        object.put("bet_history_games",jsonArray);
+        return object.toString();
     }
     @RequestMapping (value = "start-streaming-table",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter createStreamingSessionTable(){
@@ -366,8 +707,19 @@ public class GeneralController {
     public List<Game> upcomingGames(){
         return persist.getGamesByStatus("not started");
     }
-
-    @RequestMapping (value = "bet")
+    @RequestMapping(value="goals")
+    public List<Goal> gameGoals(){
+        List<Game> active_game=persist.getGamesByStatus("active");
+        List<Goal> goals=new ArrayList<>();
+        if(active_game != null&&!active_game.isEmpty()){
+            Game game=active_game.get(0);
+            if(game!=null){
+                goals=persist.getGameGoals(game.getId());
+            }
+        }
+        return goals;
+    }
+    @RequestMapping(value = "bet")
     public BetResponse placeBet(int gameId, String secret, int money, int guess){
         //"D71D7BD3"
         BetResponse betResponse=null;
@@ -375,7 +727,7 @@ public class GeneralController {
         bet.setGuess(guess);
         bet.setMoney(money);
         boolean success=false;
-        Integer error=null;
+        Integer errorCode=null;
         if (secret!=null){
             User user=persist.getUserBySecret(secret);
             if (user!=null){
@@ -388,7 +740,7 @@ public class GeneralController {
 
                         if (bet.getUser().getMoney()<bet.getMoney()){
                             bet=null;
-                            error= Errors.NOT_ENOUGH_MONEY;
+                            errorCode= Errors.NOT_ENOUGH_MONEY;
                         }else{
 
                             if (bet.getGuess()<=2&&bet.getGuess()>=0) {
@@ -401,24 +753,32 @@ public class GeneralController {
                                     //pendingBet(bet.getId());
                                     //pendingBets.put(userSecret, bet);
                                     success=true;
+                                    Prediction prediction=persist.getPredictionByGameId(bet.getGame().getId());
+                                    if (bet.getGuess()==0){
+                                        bet.setBonus((100-prediction.getHomeWin())*0.01);
+                                    } else if (bet.getGuess()==1) {
+                                        bet.setBonus((100-prediction.getDraw())*0.01);
+                                    } else if (bet.getGuess()==2) {
+                                        bet.setBonus((100-prediction.getAwayWin())*0.01);
+                                    }
                                     persist.save(bet);
 
                                 } else {
                                     bet=null;
-                                    error= GAME_ALREADY_STARTED;
+                                    errorCode= GAME_ALREADY_STARTED;
                                 }
                             }else {
                                 bet=null;
-                                error=Errors.INVALID_GUESS;
+                                errorCode=Errors.INVALID_GUESS;
                             }
                             // Schedule a task to check if the game status is "finished" and process the bet
                             /**/
                         }
-                    }else {bet=null;error= Errors.GAME_NOT_AVAILABLE;}
-                }else {bet=null; error= GAME_NOT_AVAILABLE;}
-            }else {bet=null; error= ERROR_NO_SUCH_USER;}
-        }else {bet=null; error= Errors.ERROR_SECRET_WAS_NOT_SENT;}
-        betResponse=new BetResponse(success,error,bet);
+                    }else {bet=null;errorCode= Errors.GAME_NOT_AVAILABLE;}
+                }else {bet=null; errorCode= GAME_NOT_AVAILABLE;}
+            }else {bet=null; errorCode= ERROR_NO_SUCH_USER;}
+        }else {bet=null; errorCode= Errors.ERROR_SECRET_WAS_NOT_SENT;}
+        betResponse=new BetResponse(success,errorCode,bet);
 
 
 
@@ -461,15 +821,16 @@ public class GeneralController {
                         if (diff>0){
                             res=0;
 
-                        }else if (diff<0){
+                        }else if (diff==0){
                             res=1;
 
-                        } else {
+                        } else if(diff<0){
                             res=2;
                         }
                         if (bet.getGuess()==res){
                             bet.setResult(true);
-                            bet.getUser().setMoney(bet.getUser().getMoney()+2*bet.getMoney());
+                            int prize=(int) ((2+(bet.getBonus()))*bet.getMoney());
+                            bet.getUser().setMoney(bet.getUser().getMoney()+prize);
                             bet.setUser(bet.getUser());
                             persist.save(bet.getUser());
                         }else {
@@ -485,15 +846,7 @@ public class GeneralController {
             }).start();
         //}, 0, TimeUnit.SECONDS);
     }
-    @RequestMapping(value = "players")
-    public List<Player> playerList(){
-        List<Player> players=new ArrayList<>();
-        players.add(new Player("asd",60,60,3));
-        if (!persist.loadList(Player.class).isEmpty()){
-            players=persist.loadList(Player.class);
-        }
-        return players;
-    }
+
 
 
 }

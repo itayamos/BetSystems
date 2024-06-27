@@ -2,6 +2,7 @@ package com.ashcollege.games;
 
 import com.ashcollege.Persist;
 import com.ashcollege.entities.Club;
+import com.ashcollege.entities.Goal;
 import com.github.javafaker.Faker;
 import org.springframework.beans.factory.annotation.Autowired;
 

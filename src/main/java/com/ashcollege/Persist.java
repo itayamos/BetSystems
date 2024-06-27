@@ -3,7 +3,6 @@ package com.ashcollege;
 
 import com.ashcollege.BetService.Bet;
 import com.ashcollege.entities.*;
-import com.ashcollege.entities.PlayerA;
 import com.ashcollege.games.*;
 import com.github.javafaker.Faker;
 import org.hibernate.Session;
@@ -51,56 +50,41 @@ public class Persist {
         return this.sessionFactory.getCurrentSession().createQuery("FROM "+clazz.getSimpleName()).list();
     }
 
-    public Client getClientByFirstName(String firstName){
-        return (Client) this.sessionFactory.getCurrentSession().createQuery(
-                "FROM Client WHERE firstName= :firstName").setParameter("firstName",firstName).setMaxResults(1).uniqueResult();
-    }
+
 
     public User login(String email,String password){
         return (User) this.sessionFactory.getCurrentSession().createQuery(
                 "FROM User WHERE email= :email AND password= :password").setParameter("email",email).setParameter("password",password).uniqueResult();
     }
-    public List<Note> getNotesByCollegeName(String collegeName){
-        return this.sessionFactory.getCurrentSession().createQuery("FROM Note WHERE owner.college.name =:name").setParameter("name",collegeName).list();
-    }
+
     public List<Club> getClubs(){
         return loadList(Club.class);
     }
-    public List<Player> getPlayers(){
-        return loadList(Player.class);
-    }
-    public List<Player> getPlayersFromClub(){
 
-        if(loadList(Player.class).size()<110){ Faker faker=new Faker();
-           /* for (int j = 0; j < 10; j++) {
-                List <Player> players=new ArrayList<>();
-                Club club=new Club();
-                club.setId(j+1);
-                double skill=0;
-                for (int i = 0; i < 11; i++) {
-                    Player player=new Player(faker.leagueOfLegends().champion(),new Random().nextInt(40,80),new Random().nextInt(40,80));
-                    player.setClub(j+1);
-                    players.add(player);
-                    save(player);
-                    skill+=(player.getAttack()*0.6+ player.getDefence()*0.4)/11;
-
-                }
-                club.setSkill(skill);
-                save(club);
-            }*/
-        }
-        return loadList(Player.class);
-    }
-    public List<Player> getPlayersByClub(int id){
-        return loadList(Player.class).stream().filter(e->e.getClub()==id).toList();
-
-    }
-    public User getUserBySecret(String secret){
+    public List<User> getUserByEmail(String email){
+        return  this.sessionFactory.getCurrentSession().createQuery("FROM User WHERE email=:email").setParameter("email",email).list();
+    }public List<User> getUserByUserName(String username){
+        return this.sessionFactory.getCurrentSession().createQuery("FROM User WHERE username=:username").setParameter("username",username).list();
+    }public User getUserBySecret(String secret){
         return (User) this.sessionFactory.getCurrentSession().createQuery("FROM User WHERE secret=:secret").setParameter("secret",secret).uniqueResult();
     }public Game getGameById(int id){
         return (Game) this.sessionFactory.getCurrentSession().createQuery("FROM Game WHERE id=:id").setParameter("id",id).uniqueResult();
     }public Bet getBetById(int id){
         return (Bet) this.sessionFactory.getCurrentSession().createQuery("FROM Bet WHERE id=:id").setParameter("id",id).uniqueResult();
+    }public Club getClubById(int id){
+        return (Club) this.sessionFactory.getCurrentSession().createQuery("FROM Club WHERE id=:id").setParameter("id",id).uniqueResult();
+    }public List<EPlayer> getEPlayersClubById(int id){
+        return  this.sessionFactory.getCurrentSession().createQuery("FROM EPlayer WHERE club.id=:id").setParameter("id",id).list();
+    }public List<Goal> getGameGoals(int id){
+        return  this.sessionFactory.getCurrentSession().createQuery("FROM Goal WHERE game.id=:id").setParameter("id",id).list();
+    }public List<Goal> getGameGoalsBySide(int id,String affiliation){
+        return  this.sessionFactory.getCurrentSession().createQuery("FROM Goal WHERE game.id=:id AND affiliation=:affiliation").setParameter("id",id).setParameter("affiliation",affiliation).list();
+    }public int getMoneyBySecret(String secret){
+        User u=(User)(this.sessionFactory.getCurrentSession().createQuery("FROM User WHERE secret=:secret").setParameter("secret",secret).uniqueResult());
+        if (u==null) return 0;
+        return u.getMoney();
+    }public Prediction getPredictionByGameId(int id){
+        return  (Prediction) this.sessionFactory.getCurrentSession().createQuery("FROM Prediction WHERE game.id=:id").setParameter("id",id).uniqueResult();
     }
     public List<Bet> getBetByUserSecret(String secret){
         return this.sessionFactory.getCurrentSession().createQuery("FROM Bet WHERE user.secret=:secret").setParameter("secret",secret).list();
@@ -110,7 +94,6 @@ public class Persist {
     public List<Game> getGames(){
         return loadList(Game.class);
     }
-    public List<PlayerA> getPA(){return loadList(PlayerA.class);}
 
     public List<Game> getGamesByRound(int round){
         return this.sessionFactory.getCurrentSession().createQuery("FROM Game WHERE round = :round").setParameter("round",round).list();
@@ -155,13 +138,8 @@ public class Persist {
         return this.sessionFactory.getCurrentSession().createQuery(
                 "FROM User WHERE username= :username").setParameter("username",username).list().isEmpty();
     }
-    public List<Note> getNotes(String secret){
-        return this.sessionFactory.getCurrentSession().createQuery("FROM Note WHERE owner.secret = :secret").setParameter("secret",secret).list();
-    }
-    public List<Player>  getPlayersByClubID(int club){
-        return this.sessionFactory.getCurrentSession().createQuery(
-                "FROM Player WHERE club= :club").setParameter("club",club).list();
-    }
+
+
 
 
 

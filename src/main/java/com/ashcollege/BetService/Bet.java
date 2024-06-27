@@ -13,6 +13,7 @@ public class Bet {
     private int guess;
     private boolean result;
     private boolean response;
+    private double bonus;
 
 
     public Bet(Game game, User user, int money, int guess) {
@@ -77,6 +78,14 @@ public class Bet {
 
     public void setResponse(boolean response) {
         this.response = response;
+    }
+
+    public double getBonus() {
+        return bonus;
+    }
+
+    public void setBonus(double bonus) {
+        this.bonus = bonus;
     }
 
     public int determine(){

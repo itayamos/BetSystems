@@ -3,9 +3,9 @@ package com.ashcollege.utils;
 import com.ashcollege.Persist;
 import com.ashcollege.entities.*;
 import com.ashcollege.games.Game;
-import com.ashcollege.games.Goal;
 import com.github.javafaker.Faker;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.web.servlet.error.DefaultErrorViewResolver;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -18,6 +18,9 @@ import java.util.Random;
 public class Utils {
     @Autowired
     private Persist persist;
+    @Autowired
+    private DefaultErrorViewResolver conventionErrorViewResolver;
+
     @PostConstruct
     public void init2(){
         new Thread(()->{
@@ -25,32 +28,21 @@ public class Utils {
                 Thread.sleep(3000);
                 List<User> users=persist.loadList(User.class);
                 Faker faker=new Faker();
+                User userQ=new User("joe",
+                        "america","biden@gmail.com",
+                        "qwert"
+                );
+                userQ.setMoney(1000);
+                persist.save(userQ);
                 if (users.size()<50){
                     for (int i = 0; i < 20; i++) {
 
                         User user=new User(faker.name().firstName(),
-                                faker.lorem().word(),
+                                faker.lorem().word(),faker.animal().name()+"@gmail.com",
                                 faker.random().hex()
                         );
                         user.setMoney(1000);
                         persist.save(user);
-                    }
-                    Random random=new Random();
-                    for (int i = 0; i < 10; i++) {
-                        StringBuilder stringBuilder=new StringBuilder();
-                        for (int j = 0; j < 5; j++) {
-                            stringBuilder.append(faker.lorem().word()).append(" ");
-                        }
-                        Note note=new Note();
-                        note.setContent(stringBuilder.toString());
-                        note.setDate(new Date());
-                        int randomId=random.nextInt(1,5);
-                        User user=new User();
-                        user.setId(randomId);
-                        note.setOwner(user);
-
-                        persist.save(note);
-
                     }
                 }
             } catch (InterruptedException e) {
@@ -122,10 +114,22 @@ public class Utils {
                         clubs.add(club);
                         persist.save(club);
                     }
-                    //List<Player> players;
+
+                    List<Double> skillAvgs=new ArrayList<>();
+                    for (int i = 1; i <= 10; i++) {
+                        double skillAvg=0;
+                        for (int j = 0; j < 11; j++) {
+                            int skill=new Random().nextInt(55,80);
+                            EPlayer ePlayer=new EPlayer(faker.funnyName().name(),0,persist.getClubById(i),skill);
+                            skillAvg+=skill;
+                            persist.save(ePlayer);
+                        }
+                        skillAvgs.add(skillAvg/11);
+                    }
                     for (int i = 0; i < 10; i++) {
 
-                        double skill=new Random().nextInt(55,75);
+
+                        double skill=skillAvgs.get(i);
                         /*for (int j = 0; j < 11; j++) {
                             player=new Player(faker.name().lastName(),new Random().nextInt(40,80),new Random().nextInt(40,80));
                             persist.save(player);
@@ -156,19 +160,28 @@ public class Utils {
         //new Thread(()->{
           //  while (!game.getStatus().equals("finished")){
                 game.setStatus("active");
-                Faker faker=new Faker();
-                double team1Modifier = new Random().nextInt(0,10) * 0.6; // Random factor (optional)
-                double team2Modifier = new Random().nextInt(0,10) * 0.4; // Random factor (optional)
-                int home_goal=(int) ((game.getHome().getSkill())/100 * (1 + team1Modifier));
-                int away_goal=(int) ((game.getAway().getSkill())/100 * (1 + team2Modifier));
+
+                double home_advantage=new Random().nextDouble(0.5,0.65);
+                double away_disadvantage=1-home_advantage;
+                double weatherFactor = new Random().nextDouble(0.9,1.1); // 0.9 to 1.1
+                double injuryFactor = new Random().nextDouble(0.8,1.0); // 0.8 to 1.0
+                double moraleFactor_home = new Random().nextDouble(0.85,1.15); // 0.85 to 1.25
+                double moraleFactor_away = new Random().nextDouble(0.85,1.15); // 0.85 to 1.25
+                double team1Modifier = new Random().nextInt(0,10) * home_advantage; // Random factor (optional)
+                double team2Modifier = new Random().nextInt(0,10) * away_disadvantage; // Random factor (optional)
+                int home_goal=(int) ((game.getHome().getSkill())/100 * (1 + team1Modifier)*moraleFactor_home*weatherFactor);
+                int away_goal=(int) ((game.getAway().getSkill())/100 * (1 + team2Modifier)*moraleFactor_away*weatherFactor);
+
 
                 game.setMinute(0);
+                List<EPlayer> ePlayersHome=persist.getEPlayersClubById(game.getHome().getId());
+                List <EPlayer> ePlayersAway=persist.getEPlayersClubById(game.getAway().getId());
                 List<Goal> goalsHome=new ArrayList<>();
                 List<Goal> goalsAway=new ArrayList<>();
                 for (int i = 0; i < home_goal; i++) {
-                    goalsHome.add(new Goal(faker.pokemon().name(),new Random().nextInt(0,90)));
+                    goalsHome.add(new Goal(game,game.getHome(),"home",new Random().nextInt(0,90)));
                 }for (int i = 0; i < away_goal; i++) {
-                    goalsAway.add(new Goal(faker.pokemon().name(),new Random().nextInt(0,90)));
+                    goalsAway.add(new Goal(game,game.getAway(),"away",new Random().nextInt(0,90)));
                 }
                 while (game.getMinute()<90){
                     List<Goal> goalsByMinute_home=goalsHome.stream().filter((Goal g)->{return game.getMinute()==g.getMinute();}).toList();
@@ -178,12 +191,29 @@ public class Utils {
                         //  game.getHome_goals().add(g);
                         //}
                         game.setScore_home(game.getScore_home()+goalsByMinute_home.size());
+                        for (int i = 0; i < goalsByMinute_home.size(); i++) {
+                            EPlayer ePlayer=ePlayersHome.get(new Random().nextInt(0,ePlayersHome.size()));
+                            ePlayer.setGoalAmount(ePlayer.getGoalAmount()+1);
+                            ePlayer.setSkill(ePlayer.getSkill()+1);
+                            persist.save(ePlayer);
+                            goalsByMinute_home.get(i).setePlayer(ePlayer);
+                            persist.save(goalsByMinute_home.get(i));
+                        }
 
                     }if (!goalsByMinute_away.isEmpty()/*&&game.getAway_goals()!=null*/){
                         //for(Goal g:goalsByMinute_away){
                         //  game.getAway_goals().add(g);
                         //}
                         game.setScore_away(game.getScore_away()+goalsByMinute_away.size());
+                        for (int i = 0; i < goalsByMinute_away.size(); i++) {
+                            EPlayer ePlayer=ePlayersAway.get(new Random().nextInt(0,ePlayersAway.size()));
+                            ePlayer.setGoalAmount(ePlayer.getGoalAmount()+1);
+                            ePlayer.setSkill(ePlayer.getSkill()+1);
+                            persist.save(ePlayer);
+                            goalsByMinute_away.get(i).setePlayer(ePlayer);
+                            persist.save(goalsByMinute_away.get(i));
+                        }
+
                     }
                     persist.save(game);
                     try {
@@ -213,13 +243,48 @@ public class Utils {
                 Thread.sleep(5000);
                 List<Club> clubs=persist.loadList(Club.class);
                 List<Game> games=persist.loadList(Game.class);
+                System.out.println("here we gooooo! ^%$#");
                 if(clubs.size()==10&&games.size()<90){
                     for (int j = 1; j < 10; j++) {
                         for (int i = 0; i < 10; i++) {
                             Game game=new Game(clubs.get(i),clubs.get((i+j)%clubs.size()));game.setRound(j);game.setStatus("not started");
                             persist.save(game);
+                            Prediction prediction=new Prediction(game);
+                            double skillSum=game.getHome().getSkill()+game.getAway().getSkill();
+                            int home_win_away_loss=game.getHome().getWins();//+game.getAway().getLoses();
+                            int away_win_home_loss=/*game.getHome().getLoses()+*/game.getAway().getWins();
+                            skillSum+=home_win_away_loss+away_win_home_loss;
+                            int homeWin_pred=(int)((game.getHome().getSkill()*100)/skillSum);
+                            int awayWin_pred=(int)((game.getAway().getSkill()*100)/skillSum);
+                            int sumDraws=game.getHome().getDraws()+game.getAway().getDraws();
+                            int draw_div_2=new Random().nextInt(5+sumDraws,13+sumDraws)+sumDraws;
+                            int draw_pred=draw_div_2*2+1;
+                            homeWin_pred-=draw_div_2;
+                            awayWin_pred-= draw_div_2;
+                            prediction.setHomeWin(homeWin_pred);
+                            prediction.setAwayWin(awayWin_pred);
+                            prediction.setDraw((draw_pred));
+                            int max=Math.max(draw_pred,Math.max(homeWin_pred,away_win_home_loss));
+
+                            if (homeWin_pred>awayWin_pred && homeWin_pred>draw_pred){
+                                prediction.setPred(0);
+                            }else if(awayWin_pred>homeWin_pred && awayWin_pred>draw_pred){
+                                prediction.setPred(2);
+                            }else if (draw_pred>homeWin_pred && draw_pred>awayWin_pred){
+                                prediction.setPred(1);
+                            }else if (homeWin_pred==draw_pred){
+                                prediction.setPred(1);
+                            }else if (awayWin_pred==draw_pred){
+                                prediction.setPred(1);
+                            }else if (homeWin_pred==awayWin_pred){
+                                prediction.setPred(2);
+                            }
+
+                            persist.save(prediction);
                         }
+                        Thread.sleep(30*1000);
                         //for (int i = 0; i < 10; i++) {}
+                        //Thread.sleep(333*90);
                         for (int i = 0; i < 10; i++) {
                             Game game=persist.getGameById(10*(j-1)+i+1);
                             simulateGame(game);
@@ -227,46 +292,84 @@ public class Utils {
                             persist.save(game);
 
 
-                        }
-                        //Thread.sleep(1000);
-                        for (int i = 0; i < 10; i++) {
-                            Game game=persist.getGameById(10*(j-1)+i+1);
-                            if (game.getScore_home()>game.getScore_away()){
-                                game.getHome().setSkill(game.getHome().getSkill()+3);
-                                game.getAway().setSkill(game.getAway().getSkill()-1);
+                            Game game_post_match=persist.getGameById(10*(j-1)+i+1);
+                            double homeSkill=game_post_match.getHome().getSkill();
+                            double awaySkill=game_post_match.getAway().getSkill();
+                            if (game_post_match.getScore_home()>game_post_match.getScore_away()){
+                                List<EPlayer> ePlayersHome=persist.getEPlayersClubById(game_post_match.getHome().getId());
+                                List <EPlayer> ePlayersAway=persist.getEPlayersClubById(game_post_match.getAway().getId());
+                                for (int k = 0; k < 11; k++) {
+                                    EPlayer eph=ePlayersHome.get(k);
+                                    EPlayer epa=ePlayersAway.get(k);
+                                    eph.setSkill(eph.getSkill()+3);
+                                    epa.setSkill(epa.getSkill()-1);
+                                    persist.save(eph);
+                                    persist.save(epa);
+                                    homeSkill+= eph.getSkill();
+                                    awaySkill+=epa.getSkill();
 
-                                game.getHome().setWins(game.getHome().getWins()+1);
-                                game.getAway().setLoses(game.getAway().getLoses()+1);
+                                }
+                                System.out.println("home win");
+                                game_post_match.getHome().setWins(game_post_match.getHome().getWins()+1);
+                                game_post_match.getAway().setLoses(game_post_match.getAway().getLoses()+1);
 
-                                game.getHome().setPoints(game.getHome().getPoints()+3);
+                                game_post_match.getHome().setPoints(game_post_match.getHome().getPoints()+3);
 
                                 //persist.save(games.get(i).getHome());persist.save(games.get(i).getAway());
-                            }else if (game.getScore_home()<game.getScore_away()){
-                                game.getHome().setSkill(game.getHome().getSkill()-1);
-                                game.getAway().setSkill(game.getAway().getSkill()+3);
+                            }else if (game_post_match.getScore_home()<game_post_match.getScore_away()){
 
-                                game.getHome().setLoses(game.getHome().getLoses()+1);
-                                game.getAway().setWins(game.getAway().getWins()+1);
+                                List<EPlayer> ePlayersHome=persist.getEPlayersClubById(game_post_match.getHome().getId());
+                                List <EPlayer> ePlayersAway=persist.getEPlayersClubById(game_post_match.getAway().getId());
 
-                                game.getAway().setPoints(game.getAway().getPoints()+3);
+                                for (int k = 0; k < 11; k++) {
+                                    EPlayer eph=ePlayersHome.get(k);
+                                    EPlayer epa=ePlayersAway.get(k);
+                                    eph.setSkill(eph.getSkill()-1);
+                                    epa.setSkill(epa.getSkill()+3);
+                                    persist.save(eph);
+                                    persist.save(epa);
+                                    homeSkill+= eph.getSkill();
+                                    awaySkill+=epa.getSkill();
+                                }
+                                System.out.println("home loss");
+                                game_post_match.getHome().setLoses(game_post_match.getHome().getLoses()+1);
+                                game_post_match.getAway().setWins(game_post_match.getAway().getWins()+1);
+
+                                game_post_match.getAway().setPoints(game_post_match.getAway().getPoints()+3);
 
                                 //persist.save(games.get(i).getHome());persist.save(games.get(i).getAway());
-                            }else if(game.getScore_home()==game.getScore_away()){
-                                game.getHome().setDraws(game.getHome().getDraws()+1);
-                                game.getAway().setDraws(game.getAway().getDraws()+1);
+                            }else if(game_post_match.getScore_home()==game_post_match.getScore_away()){
+                                game_post_match.getHome().setDraws(game_post_match.getHome().getDraws()+1);
+                                game_post_match.getAway().setDraws(game_post_match.getAway().getDraws()+1);
 
-                                game.getHome().setPoints(game.getHome().getPoints()+1);
-                                game.getAway().setPoints(game.getAway().getPoints()+1);
+                                game_post_match.getHome().setPoints(game_post_match.getHome().getPoints()+1);
+                                game_post_match.getAway().setPoints(game_post_match.getAway().getPoints()+1);
 
                             }
-                            int diff=game.getScore_home()-game.getScore_away();
 
-                            game.getHome().setGoal_diff(game.getHome().getGoal_diff()+diff);
-                            game.getAway().setGoal_diff(game.getAway().getGoal_diff()-diff);
+                            Prediction prediction=persist.getPredictionByGameId(game_post_match.getId());
+                            int diff=game_post_match.getScore_home()-game_post_match.getScore_away();
+                            boolean correctPred=(diff>0&&prediction.getPred()==0)
+                                    ||(diff==0&&prediction.getPred()==1)
+                                    ||(diff<0&&prediction.getPred()==2);
+                            prediction.setCorrect(correctPred);
+                            persist.save(prediction);
+                            game_post_match.getHome().setGoal_diff(game_post_match.getHome().getGoal_diff()+diff);
+                            game_post_match.getAway().setGoal_diff(game_post_match.getAway().getGoal_diff()-diff);
 
-                            persist.save(game.getHome());persist.save(game.getAway());
-                            //Thread.sleep(1000);
+                            if(diff!=0){
+                                homeSkill-=game_post_match.getHome().getSkill();
+                                awaySkill-=game_post_match.getAway().getSkill();
+                                game_post_match.getHome().setSkill(homeSkill/11);
+                                game_post_match.getAway().setSkill(awaySkill/11);
+                            }
+                            persist.save(game_post_match.getHome());persist.save(game_post_match.getAway());
+
                         }
+                        //Thread.sleep(1000);
+                        //for (int i = 0; i < 10; i++) {
+                          //Thread.sleep(1000);
+                        //}
                     }
 
                 }
